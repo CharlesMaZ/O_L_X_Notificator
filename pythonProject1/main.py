@@ -1,6 +1,7 @@
+import re
 from fileinput import filename
 from http.client import responses
-
+from flask import Flask, request
 import requests
 from bs4 import BeautifulSoup
 import smtplib
@@ -10,9 +11,23 @@ import json
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import random
 import time
+import json
 
-PREVIOUS_ADS_FILEE = "previous_ads.json"
+
+app = Flask(__name__)
+
+def load_config():
+    with open('config.json', 'r') as file:
+        config_data = json.load(file)
+    return config_data
+
+config = load_config()
+
+PAGE_ACCESS_TOKEN = config.get("fb_access_token")
+
+first_run = True
 file_name = "ads_backup.txt"
+subcsribers = set()
 
 def load_previous_ads():
     if os.path.exists(file_name):
@@ -28,18 +43,53 @@ def save_previous_ads(ads):
 
 previous_ads = load_previous_ads()
 
+def send_message(recipient_id, text):
+    url = "https://graph.facebook.com/v22.0/me/messages"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "recipient": {"id": recipient_id},
+        "message": {"text": text},
+        "messaging_type": "RESPONSE",
+        "access_token": PAGE_ACCESS_TOKEN,
+    }
+    #TODO try catch
+    requests.post(url, headers=headers, json=payload)
 
+@app.route("/webhook", methods=["GET", "POST"])
+def webhook():
+    if request.method == "GET":
+        if request.args.get("hub.verify_token"):
+            request.args.get("hub.challenge")
+    return "invalid verif token", 403
 
-# def load_previous_ads():
-#     if os.path.exists(PREVIOUS_ADS_FILEE):
-#         with open(PREVIOUS_ADS_FILEE, "r", encoding="utf-8") as f:
-#             return json.load(f)
-#     return {}
-#
-# def save_ads(ads):
-#     with open(PREVIOUS_ADS_FILEE, "w", encoding="utf-8") as f:
-#         json.dump(ads, f, indent=4, ensure_ascii=False)
-#
+    data = request.get_json()
+
+    for entry in data.get("entry", []):
+        for message in entry.get("messaging", []):
+            sender_id = message["sender"]["id"]
+            if "message" in message and "text" in message["message"]:
+                user_message = message["message"]["text"].strip().lower()
+
+                if user_message == "start":
+                    subcsribers.add(sender_id)
+                    send_message(sender_id, "zapisnao do powiadomien")
+                elif user_message == "stop":
+                    subcsribers.discard(sender_id)
+                    send_message(sender_idm, "nie bedziesz wiecej otrzymwyac powiadomien")
+    return "OK", 200
+
+def get_user_id():
+    url = "https://graph.facebook.com/v12.0/me"
+    params = {
+        "access_token": config.get("access_token")
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        user_data = response.json()
+        print(user_data.get("id"))
+    else:
+        print(f"Błąd pobierania ID użytkownika: {response.status_code} - {response.text}")
+        return None
 
 def update_url_page(url, new_page):
     parsed_url = urlparse(url)
@@ -52,9 +102,7 @@ def update_url_page(url, new_page):
 
     return new_url
 
-
-
-def fetch_ads():
+def fetch_ads(page_limit=5):
     USER_AGENTS = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -67,7 +115,7 @@ def fetch_ads():
     ads = []
     page = 1
     count_ad = 0
-    while True:
+    while page<= 25:
         url = base_url if page == 1 else update_url_page(base_url, page)
         print(f"Proba pobrania strony: {url}\n")
 
@@ -109,9 +157,12 @@ def fetch_ads():
                     else:
                         ad_link = None
 
+                    #czy ogłoszenei już bylo wczytane:
                     if ad_link is None or ad_link in previous_ads:
                         continue
-
+                    else:
+                        previous_ads.add(ad_link)
+                        #dodac mże flage by wczytać ogłoszenia by nei wyslac wiadomosci dla każdego ogłsozenia przy czystym starcie
                     title_element = ad.find("h4", class_=["css-1sq4ur2"])
                     #print(title_element)
                     title = title_element.text.strip() if title_element else "Brak tytułu"
@@ -120,9 +171,17 @@ def fetch_ads():
                     price = price_element.text.strip() if price_element else "Brak ceny"
 
                     #TODO dla img usunąc size na koncu linku
-                    image_element = ad.find("img", class_=["css-8wsg1m", "css-1bmvjcs"])
-                    image_url = image_element.get(
-                        'src') if image_element else "/app/static/media/no_thumbnail.15f456ec5.svg"
+                    #jesli jest to link do ototomoto to zdjecie ładuje skrypt - w skrypcie jest link do zdjęcia
+                    # ale w formacie /u002F więc trzeba konwertować script lub sizke i suzkac po niej image
+                    img_parent = ad.find("div", class_=["css-gl6djm"])
+                    #if img_parent:
+                    image_element = img_parent.find("img")#class="css-x7ghln" <div class="css-gl6djm"
+                    #print(image_element)
+                    image_urlPre = image_element["src"]
+                    #print(image_urlPre)
+                    image_url = re.sub(r";s=\d+x\d+;q=\d+", "", image_urlPre)
+                    #print(image_url, "<- img url")
+                        #image_element.get('src')) if image_element else "/app/static/media/no_thumbnail.15f456ec5.svg"
 
                     location_element = ad.find("p", {"data-testid": "location-date"})
                     location_and_date = location_element.text.strip() if location_element else "Brak lokalizacji i daty"
@@ -139,7 +198,9 @@ def fetch_ads():
                     print("-" * 30)
 
                     previous_ads.add(ad_link)
-                    new_ads_found = True
+                    if not first_run:
+                        mess = ""
+                        #send_mess_via_messenger(mess)
 
                 except AttributeError as e:
                     print(f"Błąd parsowania ogłoszenia: {e}")
@@ -158,17 +219,6 @@ def fetch_ads():
             break
         print("liczba ogloszen: ", count_ad)
 
-        # soup = BeautifulSoup(response.text, "html.parser")
-        # ad_elelements = soup.find("div", {"data-cy": "l-card"})
-        #
-        # if not ad_elelements:
-        #     print("BRAK OGŁOSZEN")
-        #
-        # for ad in ad_elelements:
-        #     #pobierz ogłoszenie, zapisz do listy widzianych ogłoszeń link (ogłoszenia do ototomoto mają pełny link, ale te do olx mają urwany początek bo prowadzą do postrony, nie innego serwisu)
-        #     #wyprintuj title ogłoszenia, cenę, link do zdjęcia jeśli już nie oglądaliśmy tego ogłoszenia. Jesli ogladaliśmy to pomiń
-        #     ad_id=ad["id"]
-        #     ad_link = ad.find("a",{"class": "css-qo0cxu"})["href"]
         print("liczba ogloszen: ", count_ad)
 
         if page >= 25:
@@ -178,15 +228,21 @@ def fetch_ads():
 def main():
     #previous_ads = load_previous_ads()
     print("hello")
+    #get_user_conversations(config.get("fb_access_token"))
+    #get_user_id()
+    #send_mess_via_messenger("aaa")
     #w pliku można zapisywac wszystkie ogłoszenia ale jeślid ata dodania jest więsza niż np. 2 msc to usuną c ogłoszenie
     #TODO albo nowe ogłoszenie porórywać tylko do ostatnich 30
     fetch_ads()
-    # while True:
-    #     ads = fetch_ads()
-    #     new_ads = []
-    #     for
+    first_run = False
+    while True:
+        fetch_ads()
+        print("sleep")
+        time.sleep(350)
 
 
 if __name__ == "__main__":
+    from threading
+    app.run(port=5000, debug=True)
     main()
 
