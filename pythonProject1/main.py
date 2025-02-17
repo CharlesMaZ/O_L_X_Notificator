@@ -45,15 +45,24 @@ previous_ads = load_previous_ads()
 
 
 def get_og_image(url):
-    """Pobiera obrazek z tagu og:image z URL"""
-    response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
+    """Pobiera obrazek z tagu og:image z URL z poprawnym User-Agent"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 
-    og_image = soup.find('meta', property='og:image')
-    if og_image:
-        return og_image.get('content')
-    return None
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
 
+        soup = BeautifulSoup(response.content, 'html.parser')
+        og_image = soup.find('meta', property='og:image')
+
+        if og_image:
+            return og_image.get('content')
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"Błąd pobierania obrazu: {e}")
+        return None
 
 # def send_message(recipient_id, text):
 def send_message(message, ad_link):
@@ -79,8 +88,8 @@ def send_message(message, ad_link):
                     "template_type": "generic",
                     "elements": [
                         {
-                            "title": "OLX Listing",
-                            "subtitle": message,
+                            "title": message["title"],
+                            "subtitle":  f"Cena: {message['price']}\nLokalizacja: {message['location']}\nData: {message['date']}",
                             "image_url": image_url,
                             "default_action": {
                                 "type": "web_url",
@@ -230,10 +239,16 @@ def fetch_ads(page_limit=5):
                     print(f"  Data: {date}")
                     print("-" * 30)
 
-                    message = (f"Nowe ogłoszenie\n: {title}\n"
-                               f"  Cena: {price}\n"
-                               f"  Lokalizacja: {location}\n"
-                               f"  Data: {date}\n")
+                    message = {
+                        "title" : title,
+                        "price" : price,
+                        "location" : location,
+                        "date" : date
+                    }
+                    # message = (f"Nowe ogłoszenie\n: {title}\n"
+                    #            f"  Cena: {price}\n"
+                    #            f"  Lokalizacja: {location}\n"
+                    #            f"  Data: {date}\n")
 
                     send_message(message, ad_link)
                     #send_message(ad_link)
@@ -268,7 +283,13 @@ def fetch_ads(page_limit=5):
 
 
 def main():
-    send_message("IVECO", "https://www.olx.pl/d/oferta/iveco-daily-wywrotka-kiper-35c130-plandeka-CID5-ID136JqP.html")
+    messagetest = {
+        "title": "Test",
+        "price": "9999",
+        "location": "Księżyc",
+        "date": "jutro"
+    }
+    send_message(messagetest, "https://www.otomoto.pl/dostawcze/oferta/iveco-daily-35c15-iveco-daily-35c15-ID6H9ATe.html")
     global first_run
     #previous_ads = load_previous_ads()
     print("hello")
