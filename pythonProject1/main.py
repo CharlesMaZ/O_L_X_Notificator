@@ -13,8 +13,7 @@ import random
 import time
 import json
 
-
-app = Flask(__name__)
+#app = Flask(__name__)
 
 def load_config():
     with open('config.json', 'r') as file:
@@ -23,16 +22,17 @@ def load_config():
 
 config = load_config()
 
-PAGE_ACCESS_TOKEN = config.get("fb_access_token")
-
 first_run = True
 file_name = "ads_backup.txt"
 subcsribers = set()
 
 def load_previous_ads():
+    global first_run
     if os.path.exists(file_name):
         with open(file_name, "r") as file:
             ads = set(line.strip() for line in file.readlines())
+            if len(ads) > 300:
+                first_run = False
             return ads
     return set()
 
@@ -43,53 +43,86 @@ def save_previous_ads(ads):
 
 previous_ads = load_previous_ads()
 
-def send_message(recipient_id, text):
-    url = "https://graph.facebook.com/v22.0/me/messages"
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "recipient": {"id": recipient_id},
-        "message": {"text": text},
-        "messaging_type": "RESPONSE",
-        "access_token": PAGE_ACCESS_TOKEN,
+
+def get_og_image(url):
+    """Pobiera obrazek z tagu og:image z URL"""
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    og_image = soup.find('meta', property='og:image')
+    if og_image:
+        return og_image.get('content')
+    return None
+
+
+# def send_message(recipient_id, text):
+def send_message(message, ad_link):
+    access_token_page = config.get("fb_access_token")
+    user_id= config.get("fb_user_id")
+    image_url = get_og_image(ad_link)
+    # message_data = {
+    #     "message": {
+    #         "text": message
+    #     },
+    #     "recipient": {
+    #         "id": user_id
+    #     }
+    # }
+    #print(ad_link)
+    if not image_url:
+        image_url = "https://ireland.apollo.olxcdn.com/v1/files/64eb38z9sa72-PL/image;s=516x361"
+    message_data = {
+        "message": {
+            "attachment": {
+                "type": "template",
+                "payload": {
+                    "template_type": "generic",
+                    "elements": [
+                        {
+                            "title": "OLX Listing",
+                            "subtitle": message,
+                            "image_url": image_url,
+                            "default_action": {
+                                "type": "web_url",
+                                "url": ad_link
+                            },
+                            # "buttons": [
+                            #     {
+                            #         "type": "web_url",
+                            #         "url": ad_link,
+                            #         "title": "View Listing"
+                            #     }
+                            # ]
+                        }
+                    ]
+                }
+            }
+        },
+        "recipient": {
+            "id": user_id
+        }
     }
-    #TODO try catch
-    requests.post(url, headers=headers, json=payload)
+    print(message_data)
+    url = f'https://graph.facebook.com/v21.0/me/messages?access_token={access_token_page}'
+    response = requests.post(url, json=message_data)
 
-@app.route("/webhook", methods=["GET", "POST"])
-def webhook():
-    if request.method == "GET":
-        if request.args.get("hub.verify_token"):
-            request.args.get("hub.challenge")
-    return "invalid verif token", 403
-
-    data = request.get_json()
-
-    for entry in data.get("entry", []):
-        for message in entry.get("messaging", []):
-            sender_id = message["sender"]["id"]
-            if "message" in message and "text" in message["message"]:
-                user_message = message["message"]["text"].strip().lower()
-
-                if user_message == "start":
-                    subcsribers.add(sender_id)
-                    send_message(sender_id, "zapisnao do powiadomien")
-                elif user_message == "stop":
-                    subcsribers.discard(sender_id)
-                    send_message(sender_idm, "nie bedziesz wiecej otrzymwyac powiadomien")
-    return "OK", 200
-
-def get_user_id():
-    url = "https://graph.facebook.com/v12.0/me"
-    params = {
-        "access_token": config.get("access_token")
-    }
-    response = requests.get(url, params=params)
     if response.status_code == 200:
-        user_data = response.json()
-        print(user_data.get("id"))
+        print("Wiadomość została wysłana!")
     else:
-        print(f"Błąd pobierania ID użytkownika: {response.status_code} - {response.text}")
-        return None
+        print(f"Coś poszło nie tak: {response.status_code}, {response.text}")
+    #
+    # headers = {"Content-Type": "application/json"}
+    # payload = {
+    #     "recipient": {"id": recipient_id},
+    #     "message": {"text": text},
+    #     "messaging_type": "RESPONSE",
+    #     "access_token": PAGE_ACCESS_TOKEN,
+    # }
+    # #TODO try catch
+    # requests.post(url, headers=headers, json=payload)
+
+
+
 
 def update_url_page(url, new_page):
     parsed_url = urlparse(url)
@@ -197,11 +230,20 @@ def fetch_ads(page_limit=5):
                     print(f"  Data: {date}")
                     print("-" * 30)
 
+                    message = (f"Nowe ogłoszenie\n: {title}\n"
+                               f"  Cena: {price}\n"
+                               f"  Lokalizacja: {location}\n"
+                               f"  Data: {date}\n")
+
+                    send_message(message, ad_link)
+                    #send_message(ad_link)
+
+
                     previous_ads.add(ad_link)
                     if not first_run:
                         mess = ""
                         #send_mess_via_messenger(mess)
-
+                    save_previous_ads(previous_ads)
                 except AttributeError as e:
                     print(f"Błąd parsowania ogłoszenia: {e}")
                     print(f"Problematic ad element HTML:\n{ad}")
@@ -226,6 +268,8 @@ def fetch_ads(page_limit=5):
 
 
 def main():
+    send_message("IVECO", "https://www.olx.pl/d/oferta/iveco-daily-wywrotka-kiper-35c130-plandeka-CID5-ID136JqP.html")
+    global first_run
     #previous_ads = load_previous_ads()
     print("hello")
     #get_user_conversations(config.get("fb_access_token"))
@@ -238,11 +282,11 @@ def main():
     while True:
         fetch_ads()
         print("sleep")
-        time.sleep(350)
+        slep_time_random = random.randint(200,650)
+        time.sleep(slep_time_random)
 
 
 if __name__ == "__main__":
-    from threading
-    app.run(port=5000, debug=True)
+    #app.run(port=5000, debug=True)
     main()
 
