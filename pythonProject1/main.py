@@ -387,6 +387,19 @@ def main():
 
         #HDS:
         "https://www.olx.pl/motoryzacja/q-iveco-daily-hds/?search%5Border%5D=created_at:desc&search%5Bfilter_float_price:from%5D=10000&search%5Bfilter_float_price:to%5D=130000"
+
+        # #inne marki:
+        # "https://www.olx.pl/motoryzacja/dostawcze/wywrotka_28/?search%5Border%5D=created_at:desc&search%5Bfilter_float_milage:to%5D=500000&search%5Bfilter_enum_mark%5D%5B0%5D=renault&search%5Bfilter_enum_mark%5D%5B1%5D=nissan&search%5Bfilter_enum_mark%5D%5B2%5D=mercedes-benz&search%5Bfilter_enum_mark%5D%5B3%5D=ford&search%5Bfilter_float_price:to%5D=120000&search%5Bfilter_float_year:from%5D=2003",
+        #
+        # #planedka pozostake:
+        # "https://www.olx.pl/motoryzacja/dostawcze/plandeka/?search%5Border%5D=created_at:desc&search%5Bfilter_enum_mark%5D%5B0%5D=ford&search%5Bfilter_enum_mark%5D%5B1%5D=nissan&search%5Bfilter_enum_mark%5D%5B2%5D=mercedes-benz&search%5Bfilter_enum_mark%5D%5B3%5D=peugeot&search%5Bfilter_float_price:to%5D=100000&search%5Bfilter_float_year:from%5D=2003",
+        #
+        # #skrzynia pozosyale
+        # "https://www.olx.pl/motoryzacja/dostawcze/skrzynia/?search%5Border%5D=created_at:desc&search%5Bfilter_float_milage:to%5D=500000&search%5Bfilter_enum_mark%5D%5B0%5D=nissan&search%5Bfilter_enum_mark%5D%5B1%5D=mercedes-benz&search%5Bfilter_enum_mark%5D%5B2%5D=ford&search%5Bfilter_enum_mark%5D%5B3%5D=renault&search%5Bfilter_float_price:to%5D=100000&search%5Bfilter_float_year:from%5D=2003",
+        #
+        #
+
+
     ]
     messagetest = {
         "title": "start skryptu",
